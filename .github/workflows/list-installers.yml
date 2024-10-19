@@ -1,0 +1,55 @@
+name: List Available macOS Releases
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * 2"
+
+jobs:
+  list-installers:
+    runs-on: macos-12
+    outputs:
+      list: ${{ steps.list.outputs.stdout }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: List Installers
+        uses: mathiasvr/command-output@v2.0.0
+        id: list
+        with:
+          run: |
+            softwareupdate
+            softwareupdate --list-full-installers
+  send-report:
+    runs-on: ubuntu-latest
+    needs: [list-installers]
+    env:
+      OUTPUT: ${{needs.list-installers.outputs.list}}
+    steps:
+      - name: Send Report
+        if: github.repository == 'Comp-Labs/Download-macOS'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{secrets.MAIL_USERNAME}}
+          password: ${{secrets.MAIL_PASSWORD}}
+          subject: Weekly macOS List Versions Report
+          to: complabs28@gmail.com
+          from: GitHub Reports <github.reports@techfiddle.io>
+          secure: true
+          body: Logs - ${{env.OUTPUT}}
+          reply_to: complabs28@gmail.com
+          ignore_cert: true
+          convert_markdown: true
+      - name: Skipped Job Explanation
+        if: github.repository == 'Comp-Labs/Download-macOS'
+        run: echo "The 'Send Report' job is skipped because it's running on a forked repository. It can run only on the original repository - Comp-Labs/Download-macOS"
+  re-run-failed-jobs:
+    runs-on: ubuntu-latest
+    needs: [list-installers, send-report]
+    if: always() && (needs.list-installers.result == 'failure')
+    steps:
+      - name: Needs Context
+        env:
+          NEEDS_CONTEXT: ${{ toJSON(needs) }}
+        run: echo "$NEEDS_CONTEXT"
